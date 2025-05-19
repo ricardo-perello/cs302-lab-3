@@ -1,8 +1,8 @@
 /*
 ============================================================================
 Filename    : rmm.cu
-Author      : Your name goes here
-SCIPER      : Your SCIPER number
+Author      : Ricardo Perello, Alexandre Bourgoin
+SCIPER      : 357241, 339607
 ============================================================================
 */
 
