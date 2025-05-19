@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --chdir /home/perello/cs302-lab-3
 #SBATCH --partition=gpu
-#SBATCH --qos=cs-302
+#SBATCH --qos=debug
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --time=1:0:0
