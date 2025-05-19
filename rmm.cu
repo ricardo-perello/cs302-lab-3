@@ -40,68 +40,9 @@ __global__ void rmm_kernel(const int * __restrict__ A,
     int out_row = blockIdx.y * blockDim.y + threadIdx.y;  // 0..M/2-1
     int out_col = blockIdx.x * blockDim.x + threadIdx.x;  // 0..K/2-1
 
-    // precompute the two A-row bases and two B-col offsets:
-    int a_row_base0 = (out_row*2    ) * N;
-    int a_row_base1 = (out_row*2 + 1) * N;
-    int b_col_base  = out_col*2;
-
-    int sum = 0;
-
-    // how many TILES to cover the N dimension?
-    int numTiles = (N + TILE - 1) / TILE;
-
-    // shared memory for one TILE×TILE slice of A+ B
-    __shared__ int sA[TILE][TILE];
-    __shared__ int sB[TILE][TILE];
-
-    for (int t = 0; t < numTiles; ++t) {
-        int k_base = t * TILE;
-
-        // load one element of A in each of the two needed rows
-        int a0 = 0, a1 = 0;
-        int global_k = k_base + threadIdx.x;
-        if (out_row < M/2 && global_k < N) {
-            a0 = A[a_row_base0 + global_k];
-            a1 = A[a_row_base1 + global_k];
-        }
-        sA[threadIdx.y*2    ][threadIdx.x] = a0;  // fold two rows into shared
-        sA[threadIdx.y*2 + 1][threadIdx.x] = a1;
-
-        // load one element of B in each of the two needed columns
-        int b0 = 0, b1 = 0;
-        int global_k_y = k_base + threadIdx.y;
-        if (global_k_y < N && out_col < K/2) {
-            b0 = B[global_k_y * K + b_col_base    ];
-            b1 = B[global_k_y * K + b_col_base + 1];
-        }
-        sB[threadIdx.y][threadIdx.x*2    ] = b0;  // fold two cols into shared
-        sB[threadIdx.y][threadIdx.x*2 + 1] = b1;
-
-        // *all* threads sync here:
-        __syncthreads();
-
-        // accumulate over this tile
-        int limit = min(TILE, N - k_base);
-        for (int k = 0; k < limit; ++k) {
-            // two A-rows come from sA[k][…], two B-cols from sB[…][k]
-            int a_0 = sA[k][threadIdx.x*2    ];
-            int a_1 = sA[k][threadIdx.x*2 + 1];
-            int b_0 = sB[threadIdx.y*2    ][k];
-            int b_1 = sB[threadIdx.y*2 + 1][k];
-
-            sum += a_0 * b_0
-                 + a_0 * b_1
-                 + a_1 * b_0
-                 + a_1 * b_1;
-        }
-
-        // and sync before we overwrite shared memory next tile:
-        __syncthreads();
-    }
-
-    // finally write out the result (guard in case grid > exact size)
+    // Sanity check: write constant value
     if (out_row < M/2 && out_col < K/2) {
-        C[out_row * (K/2) + out_col] = sum;
+        C[out_row * (K/2) + out_col] = 42;
     }
 }
 
@@ -131,8 +72,8 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
     cudaEventSynchronize(cpy_H2D_end);
 
     // Calculate grid and block dimensions
-    // Using 32x32 thread blocks for better shared memory utilization
-    dim3 blockDim(32, 32);  // 1024 threads per block
+    // Using 8x8 thread blocks for debugging
+    dim3 blockDim(8, 8);  // 64 threads per block
     dim3 gridDim((K/2 + blockDim.x - 1) / blockDim.x, 
                  (M/2 + blockDim.y - 1) / blockDim.y);
 
