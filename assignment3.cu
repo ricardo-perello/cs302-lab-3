@@ -55,8 +55,8 @@ int main (int argc, const char *argv[]) {
     set_clock();
 
     /* Use either the CPU or the GPU functions */
-    rmm_cpu(matA, matB, matC, M, N, K);  // Uncomment this line to use CPU function
-    //rmm_gpu(matA, matB, matC, M, N, K);
+    //rmm_cpu(matA, matB, matC, M, N, K);  // Uncomment this line to use CPU function
+    rmm_gpu(matA, matB, matC, M, N, K);
 
     /* Stop Timer */
     double totaltime = elapsed_time();

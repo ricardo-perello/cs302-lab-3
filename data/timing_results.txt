@@ -1,0 +1,26 @@
+# CPU Implementation Timing Results
+# Matrix Size (NxNxN), Total Time (s)
+# Tested on Izar cluster with NVIDIA V100 GPU
+# Date: May 19, 2025
+# Implementation: CPU Baseline
+
+Matrix Size,Total Time (s)
+16x16x16,3e-06
+64x64x64,0.000168
+256x256x256,0.01108
+1024x1024x1024,3.305
+4096x4096x4096,575.3
+
+
+# GPU Implementation Timing Results
+# Matrix Size (NxNxN), H2D Time (s), RMM Time (s), D2H Time (s), Total Time (s)
+# Tested on Izar cluster with NVIDIA V100 GPU
+# Date: May 19, 2025
+# Implementation: GPU Optimized with Shared Memory
+
+Matrix Size,H2D Time (s),RMM Time (s),D2H Time (s),Total Time (s)
+16x16x16,2.355e-05,0.02047,1.491e-05,0.1063
+64x64x64,3.686e-05,0.0003779,1.645e-05,0.07679
+256x256x256,0.000184,0.0004193,3.427e-05,0.07578
+1024x1024x1024,0.002002,0.001269,0.0003101,0.07914
+4096x4096x4096,0.02832,0.04634,0.003546,0.1596
