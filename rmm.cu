@@ -143,10 +143,9 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
     cudaEventCreate(&cpy_D2H_start);
     cudaEventCreate(&cpy_D2H_end);
 
-    // Create two CUDA streams for overlapping operations
-    cudaStream_t s1, s2;
-    cudaStreamCreate(&s1);
-    cudaStreamCreate(&s2);
+    // Create a single CUDA stream for async operations
+    cudaStream_t s;
+    cudaStreamCreate(&s);
 
     // Allocate pinned host memory
     int *h_matA, *h_matB, *h_matC;
@@ -164,49 +163,34 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
     cudaMalloc(&d_matB, N * K * sizeof(int));
     cudaMalloc(&d_matC, (M/2) * (K/2) * sizeof(int));
 
-    // Initialize output matrix to zero
-    cudaMemset(d_matC, 0, (M/2) * (K/2) * sizeof(int));
-
     // Calculate grid and block dimensions
     dim3 blockDim(TILE, TILE);
     dim3 gridDim((K/2 + TILE - 1) / TILE, 
                  (M/2 + TILE - 1) / TILE);
 
-    // Split the computation into two halves along the N dimension
-    int N_half = N / 2;
-    int N_remainder = N % 2;
-
     cudaEventRecord(cpy_H2D_start);
     
-    // Stream 1: First half of the computation
-    cudaMemcpyAsync(d_matA, h_matA, M * N_half * sizeof(int), cudaMemcpyHostToDevice, s1);
-    cudaMemcpyAsync(d_matB, h_matB, N_half * K * sizeof(int), cudaMemcpyHostToDevice, s1);
+    // 1) Async copy the whole A and B in one shot
+    cudaMemcpyAsync(d_matA, h_matA, M * N * sizeof(int), cudaMemcpyHostToDevice, s);
+    cudaMemcpyAsync(d_matB, h_matB, N * K * sizeof(int), cudaMemcpyHostToDevice, s);
     
-    // Stream 2: Second half of the computation
-    cudaMemcpyAsync(d_matA + M * N_half, h_matA + M * N_half, 
-                    M * (N_half + N_remainder) * sizeof(int), cudaMemcpyHostToDevice, s2);
-    cudaMemcpyAsync(d_matB + N_half * K, h_matB + N_half * K, 
-                    (N_half + N_remainder) * K * sizeof(int), cudaMemcpyHostToDevice, s2);
-
     cudaEventRecord(comp_start);
 
-    // Launch kernels on both streams
-    rmm_kernel<<<gridDim, blockDim, 0, s1>>>(d_matA, d_matB, d_matC, M, N_half, K);
-    rmm_kernel<<<gridDim, blockDim, 0, s2>>>(d_matA + M * N_half, d_matB + N_half * K, 
-                                            d_matC, M, N_half + N_remainder, K);
+    // 2) Initialize output matrix to zero and launch kernel
+    cudaMemsetAsync(d_matC, 0, (M/2) * (K/2) * sizeof(int), s);
+    rmm_kernel<<<gridDim, blockDim, 0, s>>>(d_matA, d_matB, d_matC, M, N, K);
 
     cudaEventRecord(comp_end);
 
-    // 1) Wait for both streams (so both half-kernels are done)
-    cudaStreamSynchronize(s1);
-    cudaStreamSynchronize(s2);
-
-    // 2) Now do the device→host copy of the full result
+    // 3) Async copy back C
     cudaEventRecord(cpy_D2H_start);
-    cudaMemcpy(h_matC, d_matC, (M/2) * (K/2) * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpyAsync(h_matC, d_matC, (M/2) * (K/2) * sizeof(int), cudaMemcpyDeviceToHost, s);
     cudaEventRecord(cpy_D2H_end);
 
-    // 3) Copy from pinned buffer back into the user's matC
+    // 4) Synchronize stream
+    cudaStreamSynchronize(s);
+
+    // Copy final result back to original memory
     memcpy(matC, h_matC, (M/2) * (K/2) * sizeof(int));
 
     // Free device memory
@@ -219,9 +203,8 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
     cudaFreeHost(h_matB);
     cudaFreeHost(h_matC);
 
-    // Destroy streams
-    cudaStreamDestroy(s1);
-    cudaStreamDestroy(s2);
+    // Destroy stream
+    cudaStreamDestroy(s);
 
     /* Display timing statistics */
     float time;
