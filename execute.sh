@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --chdir /scratch/izar/perello
+#SBATCH --chdir /home/perello/cs302-lab-3
 #SBATCH --partition=gpu
 #SBATCH --qos=cs-302
 #SBATCH --gres=gpu:1
@@ -9,6 +9,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem 1G
 #SBATCH --account cs-302
+#SBATCH --output=/scratch/izar/perello/cs302-lab-3/slurm-%j.out
+#SBATCH --error=/scratch/izar/perello/cs302-lab-3/slurm-%j.err
 
 module load gcc cuda
 
