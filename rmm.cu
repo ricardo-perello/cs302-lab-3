@@ -37,13 +37,14 @@ __global__ void rmm_kernel(
           int* __restrict__ C,
     int M, int N, int K)
 {
-    // 1) Compute which reduced-matrix element this thread handles
-    int out_row = blockIdx.y * TILE + threadIdx.y;  // 0..M/2-1
-    int out_col = blockIdx.x * TILE + threadIdx.x;  // 0..K/2-1
+    // global-reduced-matrix coords
+    int out_row = blockIdx.y * TILE + threadIdx.y;  // 0 .. M/2-1
+    int out_col = blockIdx.x * TILE + threadIdx.x;  // 0 .. K/2-1
 
-    if (out_row >= M/2 || out_col >= K/2) return;
+    // mark who's actually computing a valid C element
+    bool active = (out_row < M/2 && out_col < K/2);
 
-    // 2) Precompute the two source-row bases in A and two source-col offsets in B
+    // precompute the two A-row bases and two B-col offsets (even if inactive)
     int a0_base = (out_row*2    ) * N;
     int a1_base = (out_row*2 + 1) * N;
     int b0_off  = out_col*2;
@@ -51,17 +52,15 @@ __global__ void rmm_kernel(
 
     int sum = 0;
 
-    // 3) Allocate shared memory for a TILE×TILE slice of A×B,
-    //    but folded so each thread loads exactly two A values and two B values
+    // shared-memory tiles: 2 rows × TILE columns, and TILE rows × 2 columns
     __shared__ int sA[2*TILE][TILE];
     __shared__ int sB[TILE][2*TILE];
 
-    // 4) Loop over N in TILE-sized chunks
     int numTiles = (N + TILE - 1) / TILE;
     for (int t = 0; t < numTiles; ++t) {
         int kBase = t * TILE;
 
-        // 4a) Load A: two rows per out_row, one element each
+        // --- load A (two rows) ---
         int col = kBase + threadIdx.x;
         if (col < N) {
             sA[threadIdx.y*2    ][threadIdx.x] = A[a0_base + col];
@@ -71,7 +70,7 @@ __global__ void rmm_kernel(
             sA[threadIdx.y*2 + 1][threadIdx.x] = 0;
         }
 
-        // 4b) Load B: two cols per out_col, one element each
+        // --- load B (two cols) ---
         int brow = kBase + threadIdx.y;
         if (brow < N) {
             sB[threadIdx.y][threadIdx.x*2    ] = B[brow*K + b0_off];
@@ -81,25 +80,29 @@ __global__ void rmm_kernel(
             sB[threadIdx.y][threadIdx.x*2 + 1] = 0;
         }
 
-        // 4c) Sync *all* threads before using shared memory
+        // *all* threads sync before we read from sA/sB
         __syncthreads();
 
-        // 4d) Compute partial sums over this tile
-        int limit = min(TILE, N - kBase);
-        for (int k = 0; k < limit; ++k) {
-            int A0 = sA[threadIdx.y*2    ][k];
-            int A1 = sA[threadIdx.y*2 + 1][k];
-            int B0 = sB[k][threadIdx.x*2    ];
-            int B1 = sB[k][threadIdx.x*2 + 1];
-            sum += A0*B0 + A0*B1 + A1*B0 + A1*B1;
+        // accumulate only if this thread is active
+        if (active) {
+            int limit = min(TILE, N - kBase);
+            for (int k = 0; k < limit; ++k) {
+                int A0 = sA[threadIdx.y*2    ][k];
+                int A1 = sA[threadIdx.y*2 + 1][k];
+                int B0 = sB[k][threadIdx.x*2    ];
+                int B1 = sB[k][threadIdx.x*2 + 1];
+                sum += A0*B0 + A0*B1 + A1*B0 + A1*B1;
+            }
         }
 
-        // 4e) Sync again before the next load
+        // *all* threads sync before we overwrite sA/sB
         __syncthreads();
     }
 
-    // 5) Write the final result
-    C[out_row * (K/2) + out_col] = sum;
+    // finally write C if active
+    if (active) {
+        C[out_row * (K/2) + out_col] = sum;
+    }
 }
 
 /* GPU Optimized Function */
