@@ -125,9 +125,9 @@ __global__ void rmm_kernel(
         __syncthreads();
     }
 
-    // finally write C if active
+    // finally write C if active using atomic add
     if (active) {
-        C[out_row * (K/2) + out_col] = sum;
+        atomicAdd(&C[out_row * (K/2) + out_col], sum);
     }
 }
 
@@ -163,6 +163,9 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
     cudaMalloc(&d_matA, M * N * sizeof(int));
     cudaMalloc(&d_matB, N * K * sizeof(int));
     cudaMalloc(&d_matC, (M/2) * (K/2) * sizeof(int));
+
+    // Initialize output matrix to zero
+    cudaMemset(d_matC, 0, (M/2) * (K/2) * sizeof(int));
 
     // Calculate grid and block dimensions
     dim3 blockDim(TILE, TILE);
