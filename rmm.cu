@@ -76,7 +76,9 @@ __global__ void rmm_kernel(int *matA, int *matB, int *matC, int M, int N, int K)
                 if (t*32 + k < N) {
                     for (int aoff = 0; aoff < 2; aoff++) {
                         for (int boff = 0; boff < 2; boff++) {
-                            sum += s_matA[aoff][k] * s_matB[k][boff];
+                            if (idx*2 + aoff < M && jdx*2 + boff < K) {
+                                sum += s_matA[aoff][k] * s_matB[k][boff];
+                            }
                         }
                     }
                 }
