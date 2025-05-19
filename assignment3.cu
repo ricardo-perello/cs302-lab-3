@@ -34,14 +34,16 @@ int main (int argc, const char *argv[]) {
     }
 
     /* Step 2: Generates and initializes matrices A and B with random values. */
-    int *matA, *matB, *matC;
+    int *matA, *matB, *matC_cpu, *matC_gpu;
     matA = (int *) malloc(M * N * sizeof(int));
     matB = (int *) malloc(N * K * sizeof(int));
-    matC = (int *) malloc((M/2) * (K/2) * sizeof(int));
+    matC_cpu = (int *) malloc((M/2) * (K/2) * sizeof(int));
+    matC_gpu = (int *) malloc((M/2) * (K/2) * sizeof(int));
 
     init_mat(matA, M, N, 0);
     init_mat(matB, N, K, 1);        
-    init_mat(matC, M/2, K/2, -1);   // -1 indicates that matrix is initialized with 0s
+    init_mat(matC_cpu, M/2, K/2, -1);   // -1 indicates that matrix is initialized with 0s
+    init_mat(matC_gpu, M/2, K/2, -1);   // -1 indicates that matrix is initialized with 0s
 
     if(debug) {
         display_matrix(matA, M, N, "A");
@@ -51,30 +53,34 @@ int main (int argc, const char *argv[]) {
     /* Reset Device */
     cudaDeviceReset();
 
-    /* Start Timer */
+    /* Start Timer for CPU */
     set_clock();
+    rmm_cpu(matA, matB, matC_cpu, M, N, K);
+    double cpu_time = elapsed_time();
+    cout << "CPU Total time taken: " << setprecision(4) << cpu_time << "s" << endl;
+    write_csv(matC_cpu, M/2, K/2, "matC_cpu.csv");
 
-    /* Use either the CPU or the GPU functions */
-    //rmm_cpu(matA, matB, matC, M, N, K);  // Uncomment this line to use CPU function
-    rmm_gpu(matA, matB, matC, M, N, K);
+    /* Reset Device */
+    cudaDeviceReset();
 
-    /* Stop Timer */
-    double totaltime = elapsed_time();
+    /* Start Timer for GPU */
+    set_clock();
+    rmm_gpu(matA, matB, matC_gpu, M, N, K);
+    double gpu_time = elapsed_time();
+    cout << "GPU Total time taken: " << setprecision(4) << gpu_time << "s" << endl;
+    write_csv(matC_gpu, M/2, K/2, "matC.csv");
 
-    /* Print output matrix if debug */
-    if(debug)
-        display_matrix(matC, M/2, K/2, "C");
-
-    /* Report time required for the entire program */
-    cout << "Total time taken: " << setprecision(4) << totaltime << "s" << endl;
-
-    /* Write the output matrix to a file */
-    write_csv(matC, M/2, K/2, "matC.csv");
+    /* Print output matrices if debug */
+    if(debug) {
+        display_matrix(matC_cpu, M/2, K/2, "C (CPU)");
+        display_matrix(matC_gpu, M/2, K/2, "C (GPU)");
+    }
     
     /* Free allocated memory */
     free(matA);
     free(matB);
-    free(matC);
+    free(matC_cpu);
+    free(matC_gpu);
 
     return 0;
 }
