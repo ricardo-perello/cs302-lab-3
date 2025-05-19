@@ -36,13 +36,29 @@ __global__ void rmm_kernel(const int * __restrict__ A,
                                 int * __restrict__ C,
                           int M, int N, int K)
 {
-    // figure out which output element this thread will write:
+    // Which output element (row,col) this thread computes:
     int out_row = blockIdx.y * blockDim.y + threadIdx.y;  // 0..M/2-1
     int out_col = blockIdx.x * blockDim.x + threadIdx.x;  // 0..K/2-1
 
-    // Sanity check: write constant value
     if (out_row < M/2 && out_col < K/2) {
-        C[out_row * (K/2) + out_col] = 42;
+        int sum = 0;
+
+        // Base pointers into the two source rows of A and two cols of B
+        int a0_base = (out_row*2    ) * N;
+        int a1_base = (out_row*2 + 1) * N;
+        int b0_off  = out_col*2;
+        int b1_off  = out_col*2 + 1;
+
+        // Accumulate all four products per k
+        for (int k = 0; k < N; ++k) {
+            int A0 = A[a0_base + k];
+            int A1 = A[a1_base + k];
+            int B0 = B[k*K + b0_off];
+            int B1 = B[k*K + b1_off];
+            sum += A0*B0 + A0*B1 + A1*B0 + A1*B1;
+        }
+
+        C[out_row * (K/2) + out_col] = sum;
     }
 }
 
