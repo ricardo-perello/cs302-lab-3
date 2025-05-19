@@ -24,3 +24,17 @@ Matrix Size,H2D Time (s),RMM Time (s),D2H Time (s),Total Time (s)
 256x256x256,0.0001953,0.0003753,3.395e-05,0.0749
 1024x1024x1024,0.002235,0.001253,0.0005067,0.08239
 4096x4096x4096,0.02813,0.06684,0.003931,0.1799
+
+
+# GPU Implementation Timing Results
+# Matrix Size (NxNxN), H2D Time (s), RMM Time (s), D2H Time (s), Total Time (s)
+# Tested on Izar cluster with NVIDIA V100 GPU
+# Date: May 19, 2025
+# Implementation: GPU Optimized with Shared Memory
+
+Matrix Size,H2D Time (s),RMM Time (s),D2H Time (s),Total Time (s)
+16x16x16,2.563e-05,0.0003512,1.421e-05,0.08042
+64x64x64,3.994e-05,0.000341,1.552e-05,0.07706
+256x256x256,0.0001813,0.0003564,3.472e-05,0.07699
+1024x1024x1024,0.002092,0.0007098,0.0005068,0.08362
+4096x4096x4096,0.02872,0.02224,0.003583,0.1395

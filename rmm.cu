@@ -86,12 +86,38 @@ __global__ void rmm_kernel(
         // accumulate only if this thread is active
         if (active) {
             int limit = min(TILE, N - kBase);
-            for (int k = 0; k < limit; ++k) {
-                int A0 = sA[threadIdx.y*2    ][k];
-                int A1 = sA[threadIdx.y*2 + 1][k];
-                int B0 = sB[k][threadIdx.x*2    ];
-                int B1 = sB[k][threadIdx.x*2 + 1];
-                sum += A0*B0 + A0*B1 + A1*B0 + A1*B1;
+            // Unroll the inner loop by a factor of 4
+            #pragma unroll 4
+            for (int k = 0; k < limit; k += 4) {
+                // Process 4 elements at a time
+                if (k + 0 < limit) {
+                    int A0_0 = sA[threadIdx.y*2    ][k + 0];
+                    int A1_0 = sA[threadIdx.y*2 + 1][k + 0];
+                    int B0_0 = sB[k + 0][threadIdx.x*2    ];
+                    int B1_0 = sB[k + 0][threadIdx.x*2 + 1];
+                    sum += A0_0*B0_0 + A0_0*B1_0 + A1_0*B0_0 + A1_0*B1_0;
+                }
+                if (k + 1 < limit) {
+                    int A0_1 = sA[threadIdx.y*2    ][k + 1];
+                    int A1_1 = sA[threadIdx.y*2 + 1][k + 1];
+                    int B0_1 = sB[k + 1][threadIdx.x*2    ];
+                    int B1_1 = sB[k + 1][threadIdx.x*2 + 1];
+                    sum += A0_1*B0_1 + A0_1*B1_1 + A1_1*B0_1 + A1_1*B1_1;
+                }
+                if (k + 2 < limit) {
+                    int A0_2 = sA[threadIdx.y*2    ][k + 2];
+                    int A1_2 = sA[threadIdx.y*2 + 1][k + 2];
+                    int B0_2 = sB[k + 2][threadIdx.x*2    ];
+                    int B1_2 = sB[k + 2][threadIdx.x*2 + 1];
+                    sum += A0_2*B0_2 + A0_2*B1_2 + A1_2*B0_2 + A1_2*B1_2;
+                }
+                if (k + 3 < limit) {
+                    int A0_3 = sA[threadIdx.y*2    ][k + 3];
+                    int A1_3 = sA[threadIdx.y*2 + 1][k + 3];
+                    int B0_3 = sB[k + 3][threadIdx.x*2    ];
+                    int B1_3 = sB[k + 3][threadIdx.x*2 + 1];
+                    sum += A0_3*B0_3 + A0_3*B1_3 + A1_3*B0_3 + A1_3*B1_3;
+                }
             }
         }
 
