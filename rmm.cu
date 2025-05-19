@@ -29,67 +29,79 @@ void rmm_cpu(int *matA, int *matB, int *matC, int M, int N, int K)
     }
 }
 
-/* CUDA Kernel for RMM with shared memory */
-__global__ void rmm_kernel(int *matA, int *matB, int *matC, int M, int N, int K)
+#define TILE 32
+
+__global__ void rmm_kernel(const int * __restrict__ A,
+                          const int * __restrict__ B,
+                                int * __restrict__ C,
+                          int M, int N, int K)
 {
-    // Shared memory for tile of matrix A and B
-    __shared__ int s_matA[32][32];  // 32x32 tile of A
-    __shared__ int s_matB[32][32];  // 32x32 tile of B
-    
-    // Calculate global indices
-    int idx = blockIdx.y * blockDim.y + threadIdx.y;
-    int jdx = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // Local indices within shared memory
-    int local_y = threadIdx.y;
-    int local_x = threadIdx.x;
-    
-    // Accumulator for this thread's result
+    // figure out which output element this thread will write:
+    int out_row = blockIdx.y * blockDim.y + threadIdx.y;  // 0..M/2-1
+    int out_col = blockIdx.x * blockDim.x + threadIdx.x;  // 0..K/2-1
+
+    // precompute the two A-row bases and two B-col offsets:
+    int a_row_base0 = (out_row*2    ) * N;
+    int a_row_base1 = (out_row*2 + 1) * N;
+    int b_col_base  = out_col*2;
+
     int sum = 0;
-    
-    // Number of tiles needed
-    int numTiles = (N + 31) / 32;
-    
-    // Check if within bounds
-    if (idx < M/2 && jdx < K/2) {
-        // Loop over tiles
-        for (int t = 0; t < numTiles; t++) {
-            // Load tile of A into shared memory
-            if (idx*2 + local_y < M && t*32 + local_x < N) {
-                s_matA[local_y][local_x] = matA[(idx*2 + local_y)*N + t*32 + local_x];
-            } else {
-                s_matA[local_y][local_x] = 0;
-            }
-            
-            // Load tile of B into shared memory
-            if (t*32 + local_y < N && jdx*2 + local_x < K) {
-                s_matB[local_y][local_x] = matB[(t*32 + local_y)*K + jdx*2 + local_x];
-            } else {
-                s_matB[local_y][local_x] = 0;
-            }
-            
-            // Synchronize to ensure all threads have loaded their data
-            __syncthreads();
-            
-            // Compute partial sum for this tile
-            for (int k = 0; k < 32; k++) {
-                if (t*32 + k < N) {
-                    for (int aoff = 0; aoff < 2; aoff++) {
-                        for (int boff = 0; boff < 2; boff++) {
-                            if (idx*2 + aoff < M && jdx*2 + boff < K) {
-                                sum += s_matA[aoff][k] * s_matB[k][boff];
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Synchronize before loading next tile
-            __syncthreads();
+
+    // how many TILES to cover the N dimension?
+    int numTiles = (N + TILE - 1) / TILE;
+
+    // shared memory for one TILE×TILE slice of A+ B
+    __shared__ int sA[TILE][TILE];
+    __shared__ int sB[TILE][TILE];
+
+    for (int t = 0; t < numTiles; ++t) {
+        int k_base = t * TILE;
+
+        // load one element of A in each of the two needed rows
+        int a0 = 0, a1 = 0;
+        int global_k = k_base + threadIdx.x;
+        if (out_row < M/2 && global_k < N) {
+            a0 = A[a_row_base0 + global_k];
+            a1 = A[a_row_base1 + global_k];
         }
-        
-        // Write result
-        matC[idx*(K/2) + jdx] = sum;
+        sA[threadIdx.y*2    ][threadIdx.x] = a0;  // fold two rows into shared
+        sA[threadIdx.y*2 + 1][threadIdx.x] = a1;
+
+        // load one element of B in each of the two needed columns
+        int b0 = 0, b1 = 0;
+        int global_k_y = k_base + threadIdx.y;
+        if (global_k_y < N && out_col < K/2) {
+            b0 = B[global_k_y * K + b_col_base    ];
+            b1 = B[global_k_y * K + b_col_base + 1];
+        }
+        sB[threadIdx.y][threadIdx.x*2    ] = b0;  // fold two cols into shared
+        sB[threadIdx.y][threadIdx.x*2 + 1] = b1;
+
+        // *all* threads sync here:
+        __syncthreads();
+
+        // accumulate over this tile
+        int limit = min(TILE, N - k_base);
+        for (int k = 0; k < limit; ++k) {
+            // two A-rows come from sA[k][…], two B-cols from sB[…][k]
+            int a_0 = sA[k][threadIdx.x*2    ];
+            int a_1 = sA[k][threadIdx.x*2 + 1];
+            int b_0 = sB[threadIdx.y*2    ][k];
+            int b_1 = sB[threadIdx.y*2 + 1][k];
+
+            sum += a_0 * b_0
+                 + a_0 * b_1
+                 + a_1 * b_0
+                 + a_1 * b_1;
+        }
+
+        // and sync before we overwrite shared memory next tile:
+        __syncthreads();
+    }
+
+    // finally write out the result (guard in case grid > exact size)
+    if (out_row < M/2 && out_col < K/2) {
+        C[out_row * (K/2) + out_col] = sum;
     }
 }
 
