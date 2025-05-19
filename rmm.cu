@@ -197,16 +197,16 @@ void rmm_gpu(int *matA, int *matB, int *matC, int M, int N, int K)
 
     cudaEventRecord(comp_end);
 
-    // Copy results back to host
-    cudaEventRecord(cpy_D2H_start);
-    cudaMemcpyAsync(h_matC, d_matC, (M/2) * (K/2) * sizeof(int), cudaMemcpyDeviceToHost, s1);
-    cudaEventRecord(cpy_D2H_end);
-
-    // Synchronize all operations
+    // 1) Wait for both streams (so both half-kernels are done)
     cudaStreamSynchronize(s1);
     cudaStreamSynchronize(s2);
 
-    // Copy final result back to original memory
+    // 2) Now do the device→host copy of the full result
+    cudaEventRecord(cpy_D2H_start);
+    cudaMemcpy(h_matC, d_matC, (M/2) * (K/2) * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaEventRecord(cpy_D2H_end);
+
+    // 3) Copy from pinned buffer back into the user's matC
     memcpy(matC, h_matC, (M/2) * (K/2) * sizeof(int));
 
     // Free device memory
