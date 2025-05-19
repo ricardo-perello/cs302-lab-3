@@ -72,10 +72,10 @@ __global__ void rmm_kernel(int *matA, int *matB, int *matC, int M, int N, int K)
             __syncthreads();
             
             // Compute partial sum for this tile
-            for (int aoff = 0; aoff < 2; aoff++) {
-                for (int boff = 0; boff < 2; boff++) {
-                    for (int k = 0; k < 32; k++) {
-                        if (t*32 + k < N) {
+            for (int k = 0; k < 32; k++) {
+                if (t*32 + k < N) {
+                    for (int aoff = 0; aoff < 2; aoff++) {
+                        for (int boff = 0; boff < 2; boff++) {
                             sum += s_matA[aoff][k] * s_matB[k][boff];
                         }
                     }
