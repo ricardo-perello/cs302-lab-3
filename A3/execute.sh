@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --chdir /scratch/izar/<username>
+#SBATCH --chdir /scratch/izar/perello
 #SBATCH --partition=gpu
 #SBATCH --qos=cs-302
 #SBATCH --gres=gpu:1
